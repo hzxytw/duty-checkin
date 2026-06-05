@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>团委值班签到系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#1B4332', light: '#2D6A4F', dark: '#0F2419', pale: '#E8F5EE' },
+            accent: { DEFAULT: '#D4A017', light: '#F0C94B', dark: '#A67C00' },
+            surface: { DEFAULT: '#FAF8F5', card: '#FFFFFF', muted: '#F0EDE7' },
+            ink: { DEFAULT: '#1A1A2E', muted: '#6B7280', light: '#9CA3AF' },
+            danger: '#DC2626',
+            success: '#16A34A',
+          },
+          fontFamily: {
+            title: ['"Noto Serif SC"', 'serif'],
+            body: ['"Noto Sans SC"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Noto Sans SC', sans-serif; background: #FAF8F5; color: #1A1A2E; }
+    body.display-mode { background: #0A0F0D; color: #E8F5EE; overflow: hidden; }
+    .bg-pattern {
+      background-image:
+        radial-gradient(circle at 20% 20%, rgba(27,67,50,0.04) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(212,160,23,0.04) 0%, transparent 50%);
+    }
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
+      50% { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+    }
+    .pulse-green { animation: pulse-dot 2s ease-in-out infinite; }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .view-enter { animation: fadeSlideIn 0.35s ease-out; }
+    .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes toastOut { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-20px) scale(0.95); } }
+    .toast-in { animation: toastIn 0.3s ease-out forwards; }
+    .toast-out { animation: toastOut 0.3s ease-in forwards; }
+    @keyframes checkBounce { 0% { transform: scale(0); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    .check-bounce { animation: checkBounce 0.5s ease-out; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D5CFC5; border-radius: 3px; }
+    .sidebar-link { transition: all 0.2s ease; border-left: 3px solid transparent; }
+    .sidebar-link:hover { background: rgba(27,67,50,0.06); border-left-color: rgba(27,67,50,0.3); }
+    .sidebar-link.active { background: rgba(27,67,50,0.1); border-left-color: #1B4332; color: #1B4332; font-weight: 600; }
+    .qr-container { background: white; border: 2px solid #E5E0D8; border-radius: 12px; padding: 20px; display: inline-block; }
+    .input-focus:focus { outline: none; border-color: #1B4332; box-shadow: 0 0 0 3px rgba(27,67,50,0.12); }
+    @media (max-width: 768px) {
+      .admin-sidebar { position: fixed; left: -260px; top: 0; bottom: 0; z-index: 50; transition: left 0.3s ease; }
+      .admin-sidebar.open { left: 0; }
+      .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 40; }
+      .sidebar-overlay.open { display: block; }
+    }
+    .schedule-cell { min-height: 42px; cursor: pointer; transition: background 0.15s; }
+    .schedule-cell:hover { background: rgba(27,67,50,0.06); }
+    select.input-focus {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%236B7280'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+    }
+    @keyframes displayGlow { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+    @keyframes tokenFlash { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    .display-glow { animation: displayGlow 4s ease-in-out infinite; }
+    .token-flash { animation: tokenFlash 2s ease-in-out infinite; }
+    @keyframes qrFadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    .qr-fadein { animation: qrFadeIn 0.6s ease-out; }
+    @keyframes colonBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .colon-blink { animation: colonBlink 1s step-end infinite; }
+    .display-qr-frame {
+      background: white; border-radius: 16px; padding: 24px;
+      box-shadow: 0 0 60px rgba(45,106,79,0.2), 0 0 120px rgba(45,106,79,0.1);
+    }
+    .display-info-bar { background: linear-gradient(180deg, transparent, rgba(10,15,13,0.8)); }
+  </style>
+</head>
+<body class="bg-pattern min-h-screen">
+  <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
+  <div id="app"></div>
+
+  <script>
+    // ============ 配置 ============
+    const CONFIG = {
+      SECRET_KEY: 'youth_league_duty_2024',
+      ADMIN_PASSWORD: 'admin123',
+      TIME_SLOTS: [
+        { id: 'am', name: '上午', start: '08:00', end: '12:00' },
+        { id: 'pm', name: '下午', start: '13:00', end: '18:00' },
+        { id: 'ev', name: '晚上', start: '18:00', end: '22:00' },
+      ],
+      DISPLAY_REFRESH_INTERVAL: 30,
+    };
+
+    // ============ 默认数据 ============
+    const DEFAULT_OFFICES = [
+      { id: 1, name: '116办公室', location: '116室', icon: 'fa-door-open' },
+      { id: 2, name: '117办公室', location: '117室', icon: 'fa-door-open' },
+      { id: 3, name: '118办公室', location: '118室', icon: 'fa-door-open' },
+      { id: 4, name: '112办公室', location: '112室', icon: 'fa-door-open' },
+      { id: 5, name: '113办公室', location: '113室', icon: 'fa-door-open' },
+    ];
+
+    const DEFAULT_STUDENTS = [
+      { id: 's1', name: '张明远', studentNo: '2021030101', phone: '138****1234', department: '计算机学院' },
+      { id: 's2', name: '李思雨', studentNo: '2022030205', phone: '139****5678', department: '文学院' },
+      { id: 's3', name: '王浩然', studentNo: '2021040112', phone: '137****9012', department: '经管学院' },
+      { id: 's4', name: '赵雨萌', studentNo: '2023010108', phone: '136****3456', department: '艺术学院' },
+      { id: 's5', name: '陈志豪', studentNo: '2022050203', phone: '135****7890', department: '理学院' },
+      { id: 's6', name: '刘诗涵', studentNo: '2023020307', phone: '134****2345', department: '外语学院' },
+    ];
+
+    // ============ 工具函数 ============
+    function getTodayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function getCurrentPeriod() {
+      const h = new Date().getHours();
+      if (h < 12) return 'am';
+      if (h < 18) return 'pm';
+      return 'ev';
+    }
+    function getTimeStr() {
+      const n = new Date();
+      return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+    }
+    function generateToken(dateStr, period) {
+      const raw = dateStr + period + CONFIG.SECRET_KEY;
+      let hash = 0;
+      for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+      return Math.abs(hash).toString(36).toUpperCase().slice(0, 6);
+    }
+    function getCurrentToken() { return generateToken(getTodayStr(), getCurrentPeriod()); }
+    function validateToken(token) {
+      const periods = ['am', 'pm', 'ev'];
+      const today = getTodayStr();
+      for (const p of periods) { if (token === generateToken(today, p)) return true; }
+      return false;
+    }
+    function getTokenExpiry() {
+      const slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      return `${getTodayStr()} ${slot.end}`;
+    }
+    function getTokenRemaining() {
+      const now = new Date();
+      const slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      const [eh, em] = slot.end.split(':').map(Number);
+      const diff = (eh * 60 + em) - (now.getHours() * 60 + now.getMinutes());
+      if (diff <= 0) return '即将刷新';
+      const h = Math.floor(diff / 60), m = diff % 60;
+      return h > 0 ? `${h}小时${m}分钟后刷新` : `${m}分钟后刷新`;
+    }
+    const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    function getWeekDates() {
+      const today = new Date();
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+      const dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+      }
+      return dates;
+    }
+
+    // ============ 数据存储 ============
+    const Store = {
+      get(key, def) { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : def; } catch { return def; } },
+      set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
+      getOffices() { return this.get('duty_offices', DEFAULT_OFFICES); },
+      getStudents() { return this.get('duty_students', DEFAULT_STUDENTS); },
+      setStudents(d) { this.set('duty_students', d); },
+      getRecords() { return this.get('duty_records', []); },
+      setRecords(d) { this.set('duty_records', d); },
+      getSchedule() { return this.get('duty_schedule', []); },
+      setSchedule(d) { this.set('duty_schedule', d); },
+      getMyInfo() { return this.get('duty_my_info', null); },
+      setMyInfo(d) { this.set('duty_my_info', d); },
+      getActiveRecords() { const today = getTodayStr(); return this.getRecords().filter(r => r.date === today && !r.checkOut); },
+      getActiveByOffice(oid) { return this.getActiveRecords().find(r => r.officeId === oid); },
+      getMyActiveRecord(sid) { return this.getActiveRecords().find(r => r.studentId === sid); },
+    };
+
+    // ============ 业务逻辑 ============
+    function doCheckIn(officeId, studentId) {
+      const records = Store.getRecords();
+      const today = getTodayStr(), period = getCurrentPeriod(), timeStr = getTimeStr();
+      if (records.find(r => r.studentId === studentId && r.date === today && !r.checkOut))
+        return { ok: false, msg: '您当前已在岗，请先签退后再签到' };
+      const inOffice = records.find(r => r.officeId === officeId && r.date === today && !r.checkOut);
+      if (inOffice) inOffice.checkOut = timeStr;
+      records.push({ id: 'r' + Date.now(), officeId, studentId, date: today, period, checkIn: timeStr, checkOut: null });
+      Store.setRecords(records);
+      return { ok: true, msg: '签到成功' };
+    }
+    function doCheckOut(studentId) {
+      const records = Store.getRecords();
+      const rec = records.find(r => r.studentId === studentId && r.date === getTodayStr() && !r.checkOut);
+      if (!rec) return { ok: false, msg: '您当前未在岗' };
+      rec.checkOut = getTimeStr();
+      Store.setRecords(records);
+      return { ok: true, msg: '签退成功' };
+    }
+
+    // ============ Toast ============
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const colors = { success: 'bg-success text-white', error: 'bg-danger text-white', info: 'bg-primary text-white', warning: 'bg-accent-dark text-white' };
+      const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info', warning: 'fa-triangle-exclamation' };
+      const el = document.createElement('div');
+      el.className = `toast-in flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${colors[type] || colors.info}`;
+      el.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span>${msg}</span>`;
+      container.appendChild(el);
+      setTimeout(() => { el.classList.remove('toast-in'); el.classList.add('toast-out'); setTimeout(() => el.remove(), 300); }, 3000);
+    }
+
+    // ============ 视图管理 ============
+    let currentView = 'home';
+    let adminTab = 'dashboard';
+    let checkinOfficeId = null;
+    let adminAuthed = false;
+    let displayOfficeId = null;
+    let displayLastToken = '';
+    let displayClockTimer = null;
+    let homeClockTimer = null;
+    let verifiedToken = '';
+    let selectedOfficeId = null;
+    // 记录分页状态
+    let recordsPage = 1;
+    const RECORDS_PER_PAGE = 50;
+
+    const app = document.getElementById('app');
+
+    function navigate(view, data) {
+      currentView = view;
+      if (data) {
+        if (data.adminTab) adminTab = data.adminTab;
+        if (data.officeId !== undefined) checkinOfficeId = data.officeId;
+      }
+      render();
+    }
+
+    function render() {
+      if (displayClockTimer && currentView !== 'display') { clearInterval(displayClockTimer); displayClockTimer = null; }
+      if (homeClockTimer && currentView !== 'home') { clearInterval(homeClockTimer); homeClockTimer = null; }
+      switch (currentView) {
+        case 'home': renderHome(); break;
+        case 'admin': renderAdmin(); break;
+        case 'checkin': renderCheckin(); break;
+        case 'display': renderDisplay(); break;
+        default: renderHome();
+      }
+    }
+
+    // ============ 首页 ============
+    function renderHome() {
+      const now = new Date();
+      const slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      const activeCount = Store.getActiveRecords().length;
+      document.body.className = 'bg-pattern min-h-screen';
+      app.innerHTML = `
+        <div class="view-enter min-h-screen flex flex-col">
+          <div class="h-1.5 bg-gradient-to-r from-primary via-primary-light to-accent"></div>
+          <div class="flex-1 flex flex-col items-center justify-center px-4 py-12">
+            <div class="text-center mb-10">
+              <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary-pale text-primary text-xs font-medium mb-5">
+                <span class="w-2 h-2 rounded-full bg-success pulse-green inline-block"></span>系统运行中 · 当前${slot.name}时段
+              </div>
+              <h1 class="font-title text-3xl sm:text-4xl font-black text-primary-dark leading-tight mb-3">团委值班签到系统</h1>
+              <p class="text-ink-muted text-sm">${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${WEEKDAYS[now.getDay()]}<span class="mx-2 text-ink-light">|</span><span id="home-clock">${getTimeStr()}</span></p>
+            </div>
+            <div class="flex gap-4 mb-10">
+              <div class="bg-white rounded-xl px-5 py-3 shadow-sm border border-surface-muted text-center"><div class="text-2xl font-bold text-primary">${activeCount}</div><div class="text-xs text-ink-muted mt-0.5">当前在岗</div></div>
+              <div class="bg-white rounded-xl px-5 py-3 shadow-sm border border-surface-muted text-center"><div class="text-2xl font-bold text-accent-dark">${Store.getOffices().length}</div><div class="text-xs text-ink-muted mt-0.5">值班办公室</div></div>
+              <div class="bg-white rounded-xl px-5 py-3 shadow-sm border border-surface-muted text-center"><div class="text-2xl font-bold text-ink">${Store.getStudents().length}</div><div class="text-xs text-ink-muted mt-0.5">注册学生</div></div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-4 w-full max-w-xl">
+              <button onclick="navigate('checkin')" class="card-hover flex-1 bg-white rounded-2xl p-6 shadow-sm border border-surface-muted text-left group">
+                <div class="w-12 h-12 rounded-xl bg-primary-pale flex items-center justify-center mb-4 group-hover:bg-primary group-hover:text-white transition-colors text-primary"><i class="fa-solid fa-qrcode text-xl"></i></div>
+                <h3 class="font-bold text-lg text-ink mb-1">学生签到</h3><p class="text-sm text-ink-muted">扫描办公室二维码进行签到签退</p>
+              </button>
+              <button onclick="navigate('admin')" class="card-hover flex-1 bg-white rounded-2xl p-6 shadow-sm border border-surface-muted text-left group">
+                <div class="w-12 h-12 rounded-xl bg-accent-light/20 flex items-center justify-center mb-4 group-hover:bg-accent-dark group-hover:text-white transition-colors text-accent-dark"><i class="fa-solid fa-gauge-high text-xl"></i></div>
+                <h3 class="font-bold text-lg text-ink mb-1">管理后台</h3><p class="text-sm text-ink-muted">查看在岗状态、管理排班与二维码</p>
+              </button>
+            </div>
+          </div>
+          <footer class="text-center py-4 text-xs text-ink-light">团委值班签到系统 · 二维码每半天自动刷新</footer>
+        </div>`;
+      homeClockTimer = setInterval(() => { const el = document.getElementById('home-clock'); if (el) el.textContent = getTimeStr(); }, 10000);
+    }
+
+    // ============ 大屏展示模式 ============
+    function renderDisplay() {
+      const office = Store.getOffices().find(o => o.id === displayOfficeId);
+      if (!office) {
+        app.innerHTML = `<div class="min-h-screen flex items-center justify-center text-white text-center px-4"><div><i class="fa-solid fa-circle-exclamation text-4xl mb-4 block text-accent"></i><p class="text-lg">办公室ID无效</p></div></div>`;
+        return;
+      }
+      document.body.className = 'display-mode';
+      const token = getCurrentToken();
+      const slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      const activeRec = Store.getActiveByOffice(displayOfficeId);
+      const activeStu = activeRec ? Store.getStudents().find(s => s.id === activeRec.studentId) : null;
+      const baseUrl = window.location.origin + window.location.pathname;
+      const qrUrl = `${baseUrl}?office=${office.id}&token=${token}`;
+      displayLastToken = token;
+
+      app.innerHTML = `
+        <div class="view-enter h-screen flex flex-col relative overflow-hidden" id="display-root">
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="absolute top-0 left-1/4 w-96 h-96 rounded-full display-glow" style="background:radial-gradient(circle,rgba(45,106,79,0.15),transparent 70%)"></div>
+            <div class="absolute bottom-0 right-1/4 w-80 h-80 rounded-full display-glow" style="background:radial-gradient(circle,rgba(212,160,23,0.08),transparent 70%);animation-delay:2s"></div>
+          </div>
+          <header class="relative z-10 flex items-center justify-between px-8 py-5">
+            <div class="flex items-center gap-4">
+              <div class="w-11 h-11 rounded-xl bg-primary-light/20 flex items-center justify-center text-primary-light"><i class="fa-solid ${office.icon} text-xl"></i></div>
+              <div><h1 class="font-title text-2xl font-bold tracking-wide">${office.name}</h1><p class="text-sm text-white/40">${office.location}</p></div>
+            </div>
+            <div class="text-right">
+              <div class="text-4xl font-mono font-bold tracking-wider" id="display-clock">${getTimeStr().split(':')[0]}<span class="colon-blink">:</span>${getTimeStr().split(':')[1]}</div>
+              <div class="text-sm text-white/40 mt-1" id="display-date">${new Date().getFullYear()}年${new Date().getMonth()+1}月${new Date().getDate()}日 ${WEEKDAYS[new Date().getDay()]}</div>
+            </div>
+          </header>
+          <main class="relative z-10 flex-1 flex items-center justify-center gap-12 px-8">
+            <div class="flex flex-col items-center">
+              <div class="display-qr-frame qr-fadein" id="display-qr-container"></div>
+              <p class="text-white/30 text-sm mt-4">微信扫码签到</p>
+            </div>
+            <div class="flex flex-col gap-5 min-w-[280px] max-w-[360px]">
+              <div class="bg-white/[0.06] backdrop-blur rounded-2xl p-5 border border-white/[0.08]">
+                <div class="text-xs text-white/40 mb-2 uppercase tracking-wider">当前时段</div>
+                <div class="flex items-baseline gap-2"><span class="text-3xl font-title font-bold text-accent">${slot.name}</span><span class="text-sm text-white/50">${slot.start} - ${slot.end}</span></div>
+              </div>
+              <div class="bg-white/[0.06] backdrop-blur rounded-2xl p-5 border border-white/[0.08]">
+                <div class="text-xs text-white/40 mb-2 uppercase tracking-wider">验证码</div>
+                <div class="text-4xl font-mono font-bold tracking-[0.3em] text-primary-light token-flash" id="display-token">${token}</div>
+                <div class="text-xs text-white/30 mt-2" id="display-remaining">${getTokenRemaining()}</div>
+              </div>
+              <div class="bg-white/[0.06] backdrop-blur rounded-2xl p-5 border border-white/[0.08]" id="display-duty-card">
+                <div class="text-xs text-white/40 mb-3 uppercase tracking-wider">当前值班</div>
+                ${activeStu
+                  ? `<div class="flex items-center gap-3"><div class="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center text-success text-lg font-bold">${activeStu.name[0]}</div><div><div class="text-lg font-medium">${activeStu.name}</div><div class="text-xs text-white/40">${activeStu.department} · ${activeRec.checkIn}签到</div></div><div class="ml-auto"><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success/15 text-success text-xs font-medium"><span class="w-2 h-2 rounded-full bg-success pulse-green"></span>在岗</span></div></div>`
+                  : `<div class="text-center py-2"><div class="text-white/20 text-sm">当前无人值班</div></div>`}
+              </div>
+            </div>
+          </main>
+          <footer class="relative z-10 display-info-bar px-8 py-4 flex items-center justify-between text-xs text-white/25">
+            <span>团委值班签到系统</span><span id="display-status">系统运行正常</span><span>二维码每半天自动刷新</span>
+          </footer>
+        </div>`;
+      generateDisplayQR(qrUrl);
+      startDisplayClock();
+      if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+    }
+
+    function generateDisplayQR(url) {
+      const c = document.getElementById('display-qr-container');
+      if (!c) return;
+      try { const qr = qrcode(0, 'M'); qr.addData(url); qr.make(); c.innerHTML = qr.createImgTag(5, 10); const img = c.querySelector('img'); if (img) { img.style.width = '260px'; img.style.height = '260px'; img.style.imageRendering = 'pixelated'; } }
+      catch(e) { c.innerHTML = `<div class="text-red-400 text-sm p-4">二维码生成失败</div>`; }
+    }
+
+    function startDisplayClock() {
+      if (displayClockTimer) clearInterval(displayClockTimer);
+      displayClockTimer = setInterval(() => {
+        const clockEl = document.getElementById('display-clock');
+        if (clockEl) { const [h, m] = getTimeStr().split(':'); clockEl.innerHTML = `${h}<span class="colon-blink">:</span>${m}`; }
+        const newToken = getCurrentToken();
+        if (newToken !== displayLastToken) {
+          displayLastToken = newToken;
+          const office = Store.getOffices().find(o => o.id === displayOfficeId);
+          if (office) {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const qrUrl = `${baseUrl}?office=${office.id}&token=${newToken}`;
+            const container = document.getElementById('display-qr-container');
+            if (container) { container.classList.remove('qr-fadein'); void container.offsetWidth; container.classList.add('qr-fadein'); generateDisplayQR(qrUrl); }
+            const tokenEl = document.getElementById('display-token'); if (tokenEl) tokenEl.textContent = newToken;
+            const statusEl = document.getElementById('display-status'); if (statusEl) statusEl.textContent = `验证码已刷新：${newToken}`;
+          }
+          showToast('验证码已自动刷新', 'info');
+        }
+        const remainingEl = document.getElementById('display-remaining'); if (remainingEl) remainingEl.textContent = getTokenRemaining();
+        updateDisplayDutyCard();
+      }, CONFIG.DISPLAY_REFRESH_INTERVAL * 1000);
+    }
+
+    function updateDisplayDutyCard() {
+      const card = document.getElementById('display-duty-card'); if (!card) return;
+      const rec = Store.getActiveByOffice(displayOfficeId);
+      const stu = rec ? Store.getStudents().find(s => s.id === rec.studentId) : null;
+      card.innerHTML = `<div class="text-xs text-white/40 mb-3 uppercase tracking-wider">当前值班</div>${stu
+        ? `<div class="flex items-center gap-3"><div class="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center text-success text-lg font-bold">${stu.name[0]}</div><div><div class="text-lg font-medium">${stu.name}</div><div class="text-xs text-white/40">${stu.department} · ${rec.checkIn}签到</div></div><div class="ml-auto"><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success/15 text-success text-xs font-medium"><span class="w-2 h-2 rounded-full bg-success pulse-green"></span>在岗</span></div></div>`
+        : `<div class="text-center py-2"><div class="text-white/20 text-sm">当前无人值班</div></div>`}`;
+    }
+
+    // ============ 管理后台 ============
+    function renderAdmin() {
+      if (!adminAuthed) { renderAdminLogin(); return; }
+      const tabs = [
+        { id: 'dashboard', name: '在岗看板', icon: 'fa-tv' },
+        { id: 'qrcode', name: '二维码', icon: 'fa-qrcode' },
+        { id: 'display', name: '大屏地址', icon: 'fa-display' },
+        { id: 'schedule', name: '值班排班', icon: 'fa-calendar-days' },
+        { id: 'records', name: '签到记录', icon: 'fa-rectangle-list' },
+        { id: 'students', name: '学生管理', icon: 'fa-user-group' },
+      ];
+      document.body.className = 'bg-pattern min-h-screen';
+      app.innerHTML = `
+        <div class="view-enter flex min-h-screen">
+          <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar(false)"></div>
+          <aside id="admin-sidebar" class="admin-sidebar w-60 bg-white border-r border-surface-muted flex flex-col shrink-0">
+            <div class="p-5 border-b border-surface-muted"><div class="flex items-center gap-2"><div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-sm"><i class="fa-solid fa-shield-halved"></i></div><div><div class="font-bold text-sm text-primary-dark">管理后台</div><div class="text-[10px] text-ink-light">团委值班系统</div></div></div></div>
+            <nav class="flex-1 py-2">${tabs.map(t => `<button onclick="switchAdminTab('${t.id}')" class="sidebar-link w-full text-left px-5 py-2.5 text-sm text-ink-muted flex items-center gap-3 ${adminTab === t.id ? 'active' : ''}"><i class="fa-solid ${t.icon} w-4 text-center"></i><span>${t.name}</span></button>`).join('')}</nav>
+            <div class="p-4 border-t border-surface-muted"><button onclick="adminAuthed=false;navigate('home')" class="w-full text-sm text-ink-muted hover:text-danger flex items-center gap-2 justify-center py-2 rounded-lg hover:bg-red-50 transition"><i class="fa-solid fa-right-from-bracket"></i> 退出后台</button></div>
+          </aside>
+          <main class="flex-1 min-w-0">
+            <div class="md:hidden flex items-center gap-3 p-4 border-b border-surface-muted bg-white"><button onclick="toggleSidebar(true)" class="w-9 h-9 rounded-lg bg-surface-muted flex items-center justify-center text-ink-muted"><i class="fa-solid fa-bars"></i></button><span class="font-bold text-sm">${tabs.find(t=>t.id===adminTab)?.name || ''}</span></div>
+            <div id="admin-content" class="p-4 sm:p-6 lg:p-8"></div>
+          </main>
+        </div>`;
+      renderAdminContent();
+    }
+
+    function renderAdminLogin() {
+      document.body.className = 'bg-pattern min-h-screen';
+      app.innerHTML = `
+        <div class="view-enter min-h-screen flex items-center justify-center px-4">
+          <div class="bg-white rounded-2xl shadow-sm border border-surface-muted p-8 w-full max-w-sm">
+            <div class="text-center mb-6"><div class="w-14 h-14 rounded-2xl bg-primary mx-auto flex items-center justify-center text-white text-xl mb-4"><i class="fa-solid fa-lock"></i></div><h2 class="font-title font-bold text-xl text-primary-dark">管理后台</h2><p class="text-sm text-ink-muted mt-1">请输入管理密码</p></div>
+            <div class="space-y-4">
+              <input id="admin-pwd" type="password" placeholder="输入密码" class="input-focus w-full px-4 py-3 border border-surface-muted rounded-xl text-sm" onkeydown="if(event.key==='Enter')doAdminLogin()">
+              <button onclick="doAdminLogin()" class="w-full py-3 bg-primary text-white rounded-xl font-medium text-sm hover:bg-primary-dark transition">进入后台</button>
+              <button onclick="navigate('home')" class="w-full py-2 text-sm text-ink-muted hover:text-ink transition">返回首页</button>
+            </div>
+            <p class="text-[10px] text-ink-light text-center mt-4">默认密码：admin123</p>
+          </div>
+        </div>`;
+      setTimeout(() => document.getElementById('admin-pwd')?.focus(), 100);
+    }
+
+    function doAdminLogin() {
+      const pwd = document.getElementById('admin-pwd')?.value;
+      if (pwd === CONFIG.ADMIN_PASSWORD) { adminAuthed = true; renderAdmin(); }
+      else showToast('密码错误', 'error');
+    }
+
+    function switchAdminTab(tab) { adminTab = tab; renderAdminContent(); toggleSidebar(false); }
+
+    function toggleSidebar(open) {
+      document.getElementById('admin-sidebar')?.classList.toggle('open', open);
+      document.getElementById('sidebar-overlay')?.classList.toggle('open', open);
+    }
+
+    function renderAdminContent() {
+      const el = document.getElementById('admin-content'); if (!el) return;
+      switch (adminTab) {
+        case 'dashboard': renderDashboard(el); break;
+        case 'qrcode': renderQrcode(el); break;
+        case 'display': renderDisplayConfig(el); break;
+        case 'schedule': renderSchedule(el); break;
+        case 'records': renderRecords(el); break;
+        case 'students': renderStudents(el); break;
+      }
+    }
+
+    // --- 在岗看板 ---
+    function renderDashboard(el) {
+      const offices = Store.getOffices(), students = Store.getStudents(), activeRecords = Store.getActiveRecords();
+      const now = new Date(), slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      el.innerHTML = `<div class="view-enter">
+        <div class="flex items-center justify-between mb-6"><div><h2 class="font-title font-bold text-xl text-primary-dark">在岗看板</h2><p class="text-sm text-ink-muted mt-1">${now.getMonth()+1}月${now.getDate()}日 ${WEEKDAYS[now.getDay()]} · ${slot.name} ${slot.start}-${slot.end}</p></div>
+        <button onclick="renderAdminContent()" class="px-3 py-1.5 text-xs bg-primary-pale text-primary rounded-lg hover:bg-primary hover:text-white transition"><i class="fa-solid fa-rotate-right mr-1"></i>刷新</button></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${offices.map(o => {
+          const active = activeRecords.find(r => r.officeId === o.id);
+          const stu = active ? students.find(s => s.id === active.studentId) : null;
+          return `<div class="bg-white rounded-xl border border-surface-muted overflow-hidden card-hover"><div class="p-5"><div class="flex items-start justify-between mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-lg ${active ? 'bg-success/10 text-success' : 'bg-surface-muted text-ink-light'} flex items-center justify-center"><i class="fa-solid ${o.icon}"></i></div><div><h3 class="font-bold text-sm text-ink">${o.name}</h3><p class="text-xs text-ink-light">${o.location}</p></div></div>
+          ${active ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 text-success text-xs font-medium"><span class="w-2 h-2 rounded-full bg-success pulse-green"></span>在岗</span>` : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-muted text-ink-light text-xs font-medium"><span class="w-2 h-2 rounded-full bg-ink-light"></span>空闲</span>`}</div>
+          ${active && stu ? `<div class="bg-surface rounded-lg p-3 mt-2"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold">${stu.name[0]}</div><div><div class="text-sm font-medium text-ink">${stu.name}</div><div class="text-xs text-ink-light">${stu.department}</div></div></div><div class="text-right"><div class="text-xs text-ink-muted">签到时间</div><div class="text-sm font-mono font-medium text-primary">${active.checkIn}</div></div></div></div>` : `<div class="text-center py-4 text-sm text-ink-light"><i class="fa-regular fa-clock mr-1"></i>当前无人值班</div>`}</div></div>`;
+        }).join('')}</div></div>`;
+    }
+
+    // --- 二维码管理 ---
+    function renderQrcode(el) {
+      const offices = Store.getOffices(), token = getCurrentToken(), slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      const baseUrl = window.location.origin + window.location.pathname;
+      el.innerHTML = `<div class="view-enter">
+        <div class="mb-6"><h2 class="font-title font-bold text-xl text-primary-dark">二维码管理</h2><p class="text-sm text-ink-muted mt-1">打印后贴在对应办公室，二维码每半天自动刷新</p></div>
+        <div class="bg-primary rounded-xl p-5 mb-6 text-white"><div class="flex flex-wrap items-center justify-between gap-4"><div><div class="text-xs text-white/60 mb-1">当前验证码</div><div class="text-3xl font-mono font-bold tracking-widest">${token}</div></div><div class="text-right"><div class="text-xs text-white/60 mb-1">有效期至</div><div class="text-sm font-medium">${getTokenExpiry()}</div><div class="text-xs text-white/50 mt-0.5">${slot.name} ${slot.start}-${slot.end}</div></div></div></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">${offices.map(o => {
+          const qrUrl = `${baseUrl}?office=${o.id}&token=${token}`;
+          return `<div class="bg-white rounded-xl border border-surface-muted p-5"><div class="flex items-center gap-3 mb-4"><div class="w-9 h-9 rounded-lg bg-primary-pale text-primary flex items-center justify-center"><i class="fa-solid ${o.icon}"></i></div><div><h3 class="font-bold text-sm">${o.name}</h3><p class="text-xs text-ink-light">${o.location}</p></div></div>
+          <div class="flex justify-center mb-4"><div class="qr-container" id="qr-${o.id}"></div></div>
+          <div class="text-center"><p class="text-xs text-ink-muted mb-2">微信扫码即可签到</p><button onclick="downloadQR(${o.id})" class="px-4 py-2 bg-primary-pale text-primary text-xs font-medium rounded-lg hover:bg-primary hover:text-white transition"><i class="fa-solid fa-download mr-1"></i>下载二维码</button></div></div>`;
+        }).join('')}</div></div>`;
+      offices.forEach(o => {
+        const qrUrl = `${baseUrl}?office=${o.id}&token=${token}`;
+        const c = document.getElementById(`qr-${o.id}`);
+        if (c) { try { const qr = qrcode(0, 'M'); qr.addData(qrUrl); qr.make(); c.innerHTML = qr.createImgTag(4, 8); const img = c.querySelector('img'); if (img) { img.style.width = '180px'; img.style.height = '180px'; } } catch(e) { c.innerHTML = `<div class="text-sm text-danger">生成失败</div>`; } }
+      });
+    }
+
+    function downloadQR(officeId) {
+      const c = document.getElementById(`qr-${officeId}`); if (!c) return;
+      const img = c.querySelector('img'); if (!img) return;
+      const canvas = document.createElement('canvas'), scale = 3;
+      canvas.width = 180 * scale + 120 * scale; canvas.height = (180 + 60) * scale + 40 * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const office = Store.getOffices().find(o => o.id === officeId);
+      ctx.fillStyle = '#1B4332'; ctx.font = `bold ${20 * scale}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(office?.name || '', canvas.width / 2, 30 * scale);
+      const qrImg = new Image();
+      qrImg.onload = () => {
+        ctx.drawImage(qrImg, (canvas.width - 180 * scale) / 2, 40 * scale, 180 * scale, 180 * scale);
+        ctx.fillStyle = '#6B7280'; ctx.font = `${10 * scale}px sans-serif`;
+        ctx.fillText('扫码签到 · 团委值班系统', canvas.width / 2, (180 + 65) * scale);
+        ctx.fillStyle = '#1B4332'; ctx.font = `bold ${12 * scale}px monospace`;
+        ctx.fillText(`验证码: ${getCurrentToken()}`, canvas.width / 2, (180 + 85) * scale);
+        const a = document.createElement('a'); a.download = `${office?.name || 'qrcode'}_签到二维码.png`; a.href = canvas.toDataURL('image/png'); a.click();
+        showToast('二维码已下载', 'success');
+      };
+      qrImg.src = img.src;
+    }
+
+    // --- 大屏地址管理 ---
+    function renderDisplayConfig(el) {
+      const offices = Store.getOffices(), baseUrl = window.location.origin + window.location.pathname;
+      el.innerHTML = `<div class="view-enter">
+        <div class="mb-6"><h2 class="font-title font-bold text-xl text-primary-dark">大屏展示地址</h2><p class="text-sm text-ink-muted mt-1">在每个办公室的小显示器上用浏览器打开对应地址</p></div>
+        <div class="bg-primary-pale/50 border border-primary/10 rounded-xl p-5 mb-6"><h3 class="font-bold text-sm text-primary-dark mb-3"><i class="fa-solid fa-lightbulb text-accent-dark mr-2"></i>使用方法</h3><ol class="text-sm text-ink-muted space-y-2 list-decimal list-inside"><li>将小显示器连接到电脑或智能盒子</li><li>打开对应办公室的展示地址</li><li>按 <kbd class="px-1.5 py-0.5 bg-white rounded border text-xs">F11</kbd> 全屏</li><li>二维码和验证码每半天自动刷新</li></ol></div>
+        <div class="space-y-4">${offices.map(o => {
+          const displayUrl = `${baseUrl}?display=${o.id}`;
+          return `<div class="bg-white rounded-xl border border-surface-muted p-5"><div class="flex items-center gap-3 mb-4"><div class="w-10 h-10 rounded-lg bg-primary-pale text-primary flex items-center justify-center"><i class="fa-solid ${o.icon}"></i></div><div><h3 class="font-bold text-sm">${o.name}</h3><p class="text-xs text-ink-light">${o.location}</p></div></div>
+          <div class="flex items-center gap-2 mb-3"><label class="text-xs text-ink-muted shrink-0 w-16">展示地址</label><div class="flex-1 flex items-center bg-surface rounded-lg overflow-hidden border border-surface-muted"><input type="text" readonly value="${displayUrl}" class="flex-1 bg-transparent px-3 py-2.5 text-sm font-mono text-ink truncate" id="display-url-${o.id}"><button onclick="copyDisplayUrl(${o.id})" class="px-3 py-2.5 text-primary hover:bg-primary-pale transition text-sm shrink-0"><i class="fa-regular fa-copy"></i></button></div></div>
+          <div class="flex gap-2"><button onclick="window.open('${displayUrl}','_blank')" class="px-4 py-2 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary-dark transition"><i class="fa-solid fa-up-right-from-square mr-1"></i>新窗口打开</button><button onclick="generateDisplayQRForDownload(${o.id})" class="px-4 py-2 bg-surface-muted text-ink-muted text-xs font-medium rounded-lg hover:bg-primary-pale hover:text-primary transition"><i class="fa-solid fa-qrcode mr-1"></i>快捷二维码</button></div>
+          <div id="display-qr-preview-${o.id}" class="hidden mt-4 flex justify-center"><div class="qr-container" id="display-qr-box-${o.id}"></div></div></div>`;
+        }).join('')}</div>
+        <div class="mt-6 p-4 bg-accent/5 border border-accent/20 rounded-xl"><div class="flex items-start gap-3"><i class="fa-solid fa-circle-info text-accent-dark mt-0.5"></i><div class="text-sm text-ink-muted"><p class="font-medium text-ink mb-1">防休眠提示</p><p>系统已内置屏幕防休眠机制。如仍出现息屏，建议在操作系统设置中关闭屏幕节能。</p></div></div></div></div>`;
+    }
+
+    function copyDisplayUrl(officeId) {
+      const input = document.getElementById(`display-url-${officeId}`);
+      if (input) { navigator.clipboard.writeText(input.value).then(() => showToast('地址已复制', 'success')).catch(() => { input.select(); document.execCommand('copy'); showToast('地址已复制', 'success'); }); }
+    }
+
+    function generateDisplayQRForDownload(officeId) {
+      const preview = document.getElementById(`display-qr-preview-${officeId}`);
+      const box = document.getElementById(`display-qr-box-${officeId}`);
+      if (!preview || !box) return;
+      if (!preview.classList.contains('hidden')) { preview.classList.add('hidden'); return; }
+      const baseUrl = window.location.origin + window.location.pathname;
+      try { const qr = qrcode(0, 'M'); qr.addData(`${baseUrl}?display=${officeId}`); qr.make(); box.innerHTML = qr.createImgTag(4, 8); const img = box.querySelector('img'); if (img) { img.style.width = '180px'; img.style.height = '180px'; } } catch(e) { box.innerHTML = `<div class="text-sm text-danger">生成失败</div>`; }
+      preview.classList.remove('hidden');
+    }
+
+    // --- 值班排班 ---
+    function renderSchedule(el) {
+      const offices = Store.getOffices(), weekDates = getWeekDates();
+      el.innerHTML = `<div class="view-enter"><div class="mb-6"><h2 class="font-title font-bold text-xl text-primary-dark">值班排班</h2><p class="text-sm text-ink-muted mt-1">本周值班安排，点击单元格设置</p></div>
+      <div class="flex gap-2 mb-4 flex-wrap">${offices.map((o, i) => `<button onclick="showScheduleOffice(${o.id})" class="px-3 py-1.5 text-xs font-medium rounded-lg transition ${i === 0 ? 'bg-primary text-white' : 'bg-surface-muted text-ink-muted hover:bg-primary-pale hover:text-primary'}" id="sch-office-${o.id}">${o.name}</button>`).join('')}</div>
+      <div id="schedule-table-container" class="bg-white rounded-xl border border-surface-muted overflow-hidden"></div></div>`;
+      showScheduleOffice(offices[0].id);
+    }
+
+    function showScheduleOffice(officeId) {
+      Store.getOffices().forEach(o => { const btn = document.getElementById(`sch-office-${o.id}`); if (btn) btn.className = `px-3 py-1.5 text-xs font-medium rounded-lg transition ${o.id === officeId ? 'bg-primary text-white' : 'bg-surface-muted text-ink-muted hover:bg-primary-pale hover:text-primary'}`; });
+      const students = Store.getStudents(), schedule = Store.getSchedule(), weekDates = getWeekDates(), today = getTodayStr(), periods = CONFIG.TIME_SLOTS;
+      const container = document.getElementById('schedule-table-container');
+      container.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface-muted"><th class="px-3 py-2.5 text-left text-xs font-medium text-ink-muted w-16">时段</th>${weekDates.map((d, i) => `<th class="px-3 py-2.5 text-center text-xs font-medium ${d === today ? 'text-primary bg-primary/5' : 'text-ink-muted'}">${WEEKDAYS[(i+1)%7]}<br><span class="text-[10px]">${d.slice(5)}</span></th>`).join('')}</tr></thead><tbody>${periods.map(p => `<tr class="border-t border-surface-muted"><td class="px-3 py-2 text-xs text-ink-muted font-medium">${p.name}</td>${weekDates.map(d => { const entry = schedule.find(s => s.officeId === officeId && s.date === d && s.period === p.id); const stu = entry ? students.find(s => s.id === entry.studentId) : null; return `<td class="schedule-cell px-2 py-1.5 text-center ${d === today ? 'bg-primary/[0.02]' : ''}" onclick="editSchedule(${officeId},'${d}','${p.id}')">${stu ? `<span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-primary-pale text-primary">${stu.name}</span>` : `<span class="text-ink-light text-xs">-</span>`}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+
+    function editSchedule(officeId, date, period) {
+      const students = Store.getStudents(), schedule = Store.getSchedule();
+      const entry = schedule.find(s => s.officeId === officeId && s.date === date && s.period === period);
+      const modal = document.createElement('div'); modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4'; modal.id = 'schedule-modal';
+      modal.innerHTML = `<div class="absolute inset-0 bg-black/30" onclick="closeScheduleModal()"></div><div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 view-enter"><h3 class="font-bold text-base mb-1">设置值班人员</h3><p class="text-xs text-ink-muted mb-4">${date} ${CONFIG.TIME_SLOTS.find(s=>s.id===period).name}</p><select id="schedule-student-select" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm mb-3"><option value="">-- 不安排 --</option>${students.map(s => `<option value="${s.id}" ${entry?.studentId === s.id ? 'selected' : ''}>${s.name} (${s.studentNo})</option>`).join('')}</select><div class="flex gap-2"><button onclick="closeScheduleModal()" class="flex-1 py-2.5 text-sm text-ink-muted border border-surface-muted rounded-xl hover:bg-surface-muted transition">取消</button><button onclick="saveScheduleEntry(${officeId},'${date}','${period}')" class="flex-1 py-2.5 text-sm bg-primary text-white rounded-xl hover:bg-primary-dark transition">保存</button></div></div>`;
+      document.body.appendChild(modal);
+    }
+    function closeScheduleModal() { document.getElementById('schedule-modal')?.remove(); }
+    function saveScheduleEntry(officeId, date, period) {
+      const studentId = document.getElementById('schedule-student-select')?.value || '';
+      const schedule = Store.getSchedule();
+      const idx = schedule.findIndex(s => s.officeId === officeId && s.date === date && s.period === period);
+      if (idx >= 0) schedule.splice(idx, 1);
+      if (studentId) schedule.push({ officeId, date, period, studentId });
+      Store.setSchedule(schedule); closeScheduleModal(); showScheduleOffice(officeId); showToast('排班已更新', 'success');
+    }
+
+    // --- 签到记录（分页+无限保留+导出） ---
+    function renderRecords(el) {
+      const allRecords = Store.getRecords().slice().reverse();
+      const total = allRecords.length;
+      const totalPages = Math.max(1, Math.ceil(total / RECORDS_PER_PAGE));
+      if (recordsPage > totalPages) recordsPage = totalPages;
+      if (recordsPage < 1) recordsPage = 1;
+      const startIdx = (recordsPage - 1) * RECORDS_PER_PAGE;
+      const pageRecords = allRecords.slice(startIdx, startIdx + RECORDS_PER_PAGE);
+      const students = Store.getStudents(), offices = Store.getOffices();
+
+      el.innerHTML = `<div class="view-enter">
+        <div class="flex items-center justify-between mb-6">
+          <div><h2 class="font-title font-bold text-xl text-primary-dark">签到记录</h2><p class="text-sm text-ink-muted mt-1">共 ${total} 条记录，第 ${recordsPage}/${totalPages} 页</p></div>
+          <div class="flex items-center gap-2">${total > 0 ? `
+            <button onclick="exportRecordsCSV()" class="px-3 py-1.5 text-xs bg-primary-pale text-primary rounded-lg hover:bg-primary hover:text-white transition"><i class="fa-solid fa-file-export mr-1"></i>导出CSV</button>
+            <button onclick="if(confirm('确认清空所有记录？此操作不可恢复！')){Store.setRecords([]);recordsPage=1;renderAdminContent();showToast('已清空','info')}" class="px-3 py-1.5 text-xs text-danger border border-danger/20 rounded-lg hover:bg-danger/5 transition"><i class="fa-solid fa-trash-can mr-1"></i>清空</button>` : ''}</div>
+        </div>
+        ${total === 0
+          ? `<div class="text-center py-16 text-ink-light"><i class="fa-regular fa-clipboard text-4xl mb-3 block"></i><p>暂无签到记录</p></div>`
+          : `<div class="bg-white rounded-xl border border-surface-muted overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface-muted">
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted w-12">#</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">日期</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">时段</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">办公室</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">学生</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">签到</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">签退</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">状态</th>
+            </tr></thead><tbody>
+            ${pageRecords.map((r, i) => {
+              const stu = students.find(s => s.id === r.studentId);
+              const off = offices.find(o => o.id === r.officeId);
+              const slot = CONFIG.TIME_SLOTS.find(s => s.id === r.period);
+              const globalIdx = total - startIdx - i;
+              return `<tr class="border-t border-surface-muted hover:bg-surface/50">
+                <td class="px-4 py-2.5 text-xs text-ink-light">${globalIdx}</td>
+                <td class="px-4 py-2.5 text-xs">${r.date}</td>
+                <td class="px-4 py-2.5 text-xs">${slot?.name || r.period}</td>
+                <td class="px-4 py-2.5 text-xs">${off?.name || '-'}</td>
+                <td class="px-4 py-2.5 text-xs font-medium">${stu?.name || r.studentId}</td>
+                <td class="px-4 py-2.5 text-xs font-mono">${r.checkIn}</td>
+                <td class="px-4 py-2.5 text-xs font-mono">${r.checkOut || '-'}</td>
+                <td class="px-4 py-2.5">${r.checkOut
+                  ? (r.autoCheckout ? '<span class="text-xs text-accent-dark" title="系统自动签退">自动签退</span>' : '<span class="text-xs text-ink-muted">已签退</span>')
+                  : '<span class="inline-flex items-center gap-1 text-xs text-success font-medium"><span class="w-1.5 h-1.5 rounded-full bg-success pulse-green"></span>在岗</span>'}</td>
+              </tr>`;
+            }).join('')}
+            </tbody></table></div>
+            <div class="flex items-center justify-between px-4 py-3 border-t border-surface-muted bg-surface/30">
+              <div class="text-xs text-ink-muted">显示第 ${startIdx + 1}-${Math.min(startIdx + RECORDS_PER_PAGE, total)} 条，共 ${total} 条</div>
+              <div class="flex items-center gap-1">
+                <button onclick="goRecordsPage(1)" ${recordsPage <= 1 ? 'disabled' : ''} class="w-8 h-8 flex items-center justify-center rounded text-xs ${recordsPage <= 1 ? 'text-ink-light/40 cursor-not-allowed' : 'text-ink-muted hover:bg-primary-pale hover:text-primary'}"><i class="fa-solid fa-angles-left"></i></button>
+                <button onclick="goRecordsPage(${recordsPage - 1})" ${recordsPage <= 1 ? 'disabled' : ''} class="w-8 h-8 flex items-center justify-center rounded text-xs ${recordsPage <= 1 ? 'text-ink-light/40 cursor-not-allowed' : 'text-ink-muted hover:bg-primary-pale hover:text-primary'}"><i class="fa-solid fa-angle-left"></i></button>
+                ${generatePageButtons(recordsPage, totalPages)}
+                <button onclick="goRecordsPage(${recordsPage + 1})" ${recordsPage >= totalPages ? 'disabled' : ''} class="w-8 h-8 flex items-center justify-center rounded text-xs ${recordsPage >= totalPages ? 'text-ink-light/40 cursor-not-allowed' : 'text-ink-muted hover:bg-primary-pale hover:text-primary'}"><i class="fa-solid fa-angle-right"></i></button>
+                <button onclick="goRecordsPage(${totalPages})" ${recordsPage >= totalPages ? 'disabled' : ''} class="w-8 h-8 flex items-center justify-center rounded text-xs ${recordsPage >= totalPages ? 'text-ink-light/40 cursor-not-allowed' : 'text-ink-muted hover:bg-primary-pale hover:text-primary'}"><i class="fa-solid fa-angles-right"></i></button>
+              </div>
+            </div></div>`}
+      </div>`;
+    }
+
+    function generatePageButtons(current, total) {
+      let pages = [];
+      if (total <= 7) { for (let i = 1; i <= total; i++) pages.push(i); }
+      else {
+        pages.push(1);
+        if (current > 4) pages.push('...');
+        let start = Math.max(2, current - 2), end = Math.min(total - 1, current + 2);
+        if (current <= 4) { start = 2; end = 5; }
+        if (current >= total - 3) { start = total - 4; end = total - 1; }
+        for (let i = start; i <= end; i++) pages.push(i);
+        if (current < total - 3) pages.push('...');
+        pages.push(total);
+      }
+      return pages.map(p => p === '...'
+        ? `<span class="w-8 h-8 flex items-center justify-center text-xs text-ink-light">...</span>`
+        : `<button onclick="goRecordsPage(${p})" class="w-8 h-8 flex items-center justify-center rounded text-xs font-medium ${p === current ? 'bg-primary text-white' : 'text-ink-muted hover:bg-primary-pale hover:text-primary'}">${p}</button>`
+      ).join('');
+    }
+
+    function goRecordsPage(page) { recordsPage = page; renderAdminContent(); }
+
+    function exportRecordsCSV() {
+      const records = Store.getRecords().slice().reverse();
+      const students = Store.getStudents(), offices = Store.getOffices();
+      const header = '序号,日期,时段,办公室,姓名,学号,学院,签到时间,签退时间,状态\n';
+      const rows = records.map((r, i) => {
+        const stu = students.find(s => s.id === r.studentId);
+        const off = offices.find(o => o.id === r.officeId);
+        const slot = CONFIG.TIME_SLOTS.find(s => s.id === r.period);
+        const status = r.checkOut ? (r.autoCheckout ? '自动签退' : '已签退') : '在岗';
+        return `${i+1},${r.date},${slot?.name||r.period},${off?.name||'-'},${stu?.name||'-'},${stu?.studentNo||'-'},${stu?.department||'-'},${r.checkIn},${r.checkOut||'-'},${status}`;
+      }).join('\n');
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `值班记录_${getTodayStr()}.csv`; a.click();
+      URL.revokeObjectURL(url); showToast('记录已导出', 'success');
+    }
+
+    // --- 学生管理 ---
+    function renderStudents(el) {
+      const students = Store.getStudents();
+      el.innerHTML = `<div class="view-enter"><div class="flex items-center justify-between mb-6"><div><h2 class="font-title font-bold text-xl text-primary-dark">学生管理</h2><p class="text-sm text-ink-muted mt-1">共 ${students.length} 名</p></div><button onclick="showAddStudentModal()" class="px-4 py-2 bg-primary text-white text-sm rounded-xl hover:bg-primary-dark transition"><i class="fa-solid fa-plus mr-1"></i>添加学生</button></div>
+      <div class="bg-white rounded-xl border border-surface-muted overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface-muted"><th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">姓名</th><th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">学号</th><th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">学院</th><th class="px-4 py-3 text-left text-xs font-medium text-ink-muted">电话</th><th class="px-4 py-3 text-right text-xs font-medium text-ink-muted">操作</th></tr></thead><tbody>
+      ${students.map(s => `<tr class="border-t border-surface-muted hover:bg-surface/50"><td class="px-4 py-2.5"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">${s.name[0]}</div><span class="font-medium">${s.name}</span></div></td><td class="px-4 py-2.5 text-xs font-mono">${s.studentNo}</td><td class="px-4 py-2.5 text-xs">${s.department}</td><td class="px-4 py-2.5 text-xs">${s.phone}</td><td class="px-4 py-2.5 text-right"><button onclick="deleteStudent('${s.id}')" class="text-xs text-danger hover:underline">删除</button></td></tr>`).join('')}
+      </tbody></table></div></div></div>`;
+    }
+
+    function showAddStudentModal() {
+      const modal = document.createElement('div'); modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4'; modal.id = 'student-modal';
+      modal.innerHTML = `<div class="absolute inset-0 bg-black/30" onclick="closeStudentModal()"></div><div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 view-enter"><h3 class="font-bold text-base mb-4">添加学生</h3><div class="space-y-3"><input id="stu-name" placeholder="姓名" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="stu-no" placeholder="学号" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="stu-dept" placeholder="学院" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="stu-phone" placeholder="联系电话" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"></div><div class="flex gap-2 mt-4"><button onclick="closeStudentModal()" class="flex-1 py-2.5 text-sm text-ink-muted border border-surface-muted rounded-xl hover:bg-surface-muted transition">取消</button><button onclick="addStudent()" class="flex-1 py-2.5 text-sm bg-primary text-white rounded-xl hover:bg-primary-dark transition">添加</button></div></div>`;
+      document.body.appendChild(modal);
+      setTimeout(() => document.getElementById('stu-name')?.focus(), 100);
+    }
+    function closeStudentModal() { document.getElementById('student-modal')?.remove(); }
+    function addStudent() {
+      const name = document.getElementById('stu-name')?.value.trim(), no = document.getElementById('stu-no')?.value.trim();
+      const dept = document.getElementById('stu-dept')?.value.trim(), phone = document.getElementById('stu-phone')?.value.trim();
+      if (!name || !no) { showToast('请填写姓名和学号', 'warning'); return; }
+      const students = Store.getStudents();
+      if (students.find(s => s.studentNo === no)) { showToast('该学号已存在', 'error'); return; }
+      students.push({ id: 's' + Date.now(), name, studentNo: no, department: dept || '未填写', phone: phone || '未填写' });
+      Store.setStudents(students); closeStudentModal(); renderAdminContent(); showToast('学生已添加', 'success');
+    }
+    function deleteStudent(sid) {
+      const students = Store.getStudents();
+      const idx = students.findIndex(s => s.id === sid);
+      if (idx >= 0) { students.splice(idx, 1); Store.setStudents(students); renderAdminContent(); showToast('已删除', 'info'); }
+    }
+
+    // ============ 学生签到页 ============
+    function renderCheckin() {
+      document.body.className = 'bg-pattern min-h-screen';
+      const myInfo = Store.getMyInfo();
+      let myActiveRecord = myInfo ? Store.getMyActiveRecord(myInfo.id) : null;
+      app.innerHTML = `<div class="view-enter min-h-screen flex flex-col">
+        <div class="h-1.5 bg-gradient-to-r from-primary via-primary-light to-accent"></div>
+        <div class="flex-1 flex flex-col items-center px-4 py-8">
+          <div class="w-full max-w-md mb-6"><button onclick="navigate('home')" class="text-sm text-ink-muted hover:text-primary transition flex items-center gap-1"><i class="fa-solid fa-arrow-left"></i> 返回首页</button></div>
+          <div class="w-full max-w-md">${myActiveRecord ? renderCheckin_status(myInfo, myActiveRecord) : renderCheckin_form()}</div>
+        </div></div>`;
+    }
+
+    function renderCheckin_status(myInfo, record) {
+      const office = Store.getOffices().find(o => o.id === record.officeId);
+      const period = CONFIG.TIME_SLOTS.find(s => s.id === record.period);
+      return `<div class="bg-white rounded-2xl border border-surface-muted shadow-sm overflow-hidden">
+        <div class="bg-success/5 p-6 text-center"><div class="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3"><i class="fa-solid fa-circle-check text-3xl text-success check-bounce"></i></div><h3 class="font-bold text-lg text-ink">值班中</h3><p class="text-sm text-ink-muted mt-1">${myInfo.name}，您当前正在值班</p></div>
+        <div class="p-5 space-y-3">
+          <div class="flex justify-between py-2 border-b border-surface-muted"><span class="text-sm text-ink-muted">办公室</span><span class="text-sm font-medium">${office?.name || '-'}</span></div>
+          <div class="flex justify-between py-2 border-b border-surface-muted"><span class="text-sm text-ink-muted">时段</span><span class="text-sm font-medium">${period?.name || '-'} ${period?.start}-${period?.end}</span></div>
+          <div class="flex justify-between py-2 border-b border-surface-muted"><span class="text-sm text-ink-muted">签到时间</span><span class="text-sm font-mono font-medium text-primary">${record.checkIn}</span></div>
+          <div class="flex justify-between py-2"><span class="text-sm text-ink-muted">已值班</span><span class="text-sm font-medium">${calcDuration(record.checkIn)}</span></div>
+        </div>
+        <div class="p-5 pt-0"><button onclick="doStudentCheckOut()" class="w-full py-3 bg-danger/10 text-danger font-medium rounded-xl text-sm hover:bg-danger hover:text-white transition"><i class="fa-solid fa-right-from-bracket mr-1"></i>签退离岗</button></div></div>`;
+    }
+
+    function calcDuration(checkInTime) {
+      const now = new Date(), [h, m] = checkInTime.split(':').map(Number);
+      const minutes = (now.getHours() - h) * 60 + (now.getMinutes() - m);
+      if (minutes < 60) return `${Math.max(0, minutes)} 分钟`;
+      return `${Math.floor(minutes/60)} 小时 ${minutes%60} 分钟`;
+    }
+
+    function renderCheckin_form() {
+      const offices = Store.getOffices(), myInfo = Store.getMyInfo();
+      const slot = CONFIG.TIME_SLOTS.find(s => s.id === getCurrentPeriod());
+      return `<div class="mb-6"><h2 class="font-title font-bold text-xl text-primary-dark mb-1">值班签到</h2><p class="text-sm text-ink-muted">${slot.name} ${slot.start}-${slot.end}</p></div>
+        <div class="bg-white rounded-2xl border border-surface-muted shadow-sm p-5 mb-4"><label class="block text-sm font-medium text-ink mb-2"><i class="fa-solid fa-key text-accent-dark mr-1"></i>验证码</label><div class="flex gap-2"><input id="token-input" placeholder="输入二维码旁的6位验证码" maxlength="6" class="input-focus flex-1 px-4 py-3 border border-surface-muted rounded-xl text-sm font-mono tracking-widest uppercase" value=""><button onclick="verifyAndContinue()" class="px-5 py-3 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark transition shrink-0">验证</button></div><p class="text-xs text-ink-light mt-2">验证码位于二维码下方，每半天更新一次</p></div>
+        <div id="checkin-office-section" class="hidden"><div class="bg-white rounded-2xl border border-surface-muted shadow-sm p-5 mb-4"><label class="block text-sm font-medium text-ink mb-3"><i class="fa-solid fa-location-dot text-primary mr-1"></i>选择办公室</label><div class="space-y-2">${offices.map(o => { const active = Store.getActiveByOffice(o.id); return `<button onclick="selectCheckinOffice(${o.id})" id="office-btn-${o.id}" class="w-full text-left p-3 rounded-xl border border-surface-muted hover:border-primary hover:bg-primary-pale transition flex items-center justify-between group"><div class="flex items-center gap-3"><div class="w-9 h-9 rounded-lg bg-surface-muted group-hover:bg-primary/10 flex items-center justify-center text-ink-muted group-hover:text-primary transition"><i class="fa-solid ${o.icon}"></i></div><div><div class="text-sm font-medium">${o.name}</div><div class="text-xs text-ink-light">${o.location}</div></div></div>${active ? `<span class="text-xs text-success"><i class="fa-solid fa-user mr-1"></i>有人</span>` : `<span class="text-xs text-ink-light">空闲</span>`}</button>`; }).join('')}</div></div><div id="checkin-info-section" class="hidden">${myInfo ? renderCheckin_myInfo(myInfo) : renderCheckin_registerForm()}</div></div>`;
+    }
+
+    function verifyAndContinue() {
+      const input = document.getElementById('token-input')?.value.trim().toUpperCase();
+      if (!input) { showToast('请输入验证码', 'warning'); return; }
+      if (!validateToken(input)) { showToast('验证码无效或已过期', 'error'); return; }
+      verifiedToken = input; showToast('验证成功', 'success');
+      document.getElementById('checkin-office-section')?.classList.remove('hidden');
+      document.getElementById('token-input').disabled = true;
+    }
+
+    function selectCheckinOffice(oid) {
+      selectedOfficeId = oid;
+      Store.getOffices().forEach(o => { const btn = document.getElementById(`office-btn-${o.id}`); if (btn) { if (o.id === oid) btn.classList.add('border-primary', 'bg-primary-pale'); else btn.classList.remove('border-primary', 'bg-primary-pale'); } });
+      document.getElementById('checkin-info-section')?.classList.remove('hidden');
+    }
+
+    function renderCheckin_myInfo(myInfo) {
+      return `<div class="bg-white rounded-2xl border border-surface-muted shadow-sm p-5 mb-4"><div class="flex items-center gap-3 mb-4"><div class="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-white font-bold">${myInfo.name[0]}</div><div><div class="font-medium text-ink">${myInfo.name}</div><div class="text-xs text-ink-muted">${myInfo.studentNo} · ${myInfo.department}</div></div></div><button onclick="doStudentCheckIn()" class="w-full py-3 bg-primary text-white rounded-xl font-medium text-sm hover:bg-primary-dark transition"><i class="fa-solid fa-right-to-bracket mr-1"></i>确认签到</button><button onclick="clearMyInfo()" class="w-full mt-2 py-2 text-xs text-ink-muted hover:text-ink transition">不是我？切换账号</button></div>`;
+    }
+
+    function renderCheckin_registerForm() {
+      return `<div class="bg-white rounded-2xl border border-surface-muted shadow-sm p-5 mb-4"><h3 class="font-medium text-sm mb-3">首次使用，请填写信息</h3><div class="space-y-3"><input id="reg-name" placeholder="姓名" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="reg-no" placeholder="学号" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="reg-dept" placeholder="学院" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"><input id="reg-phone" placeholder="联系电话" class="input-focus w-full px-3 py-2.5 border border-surface-muted rounded-xl text-sm"></div><button onclick="doRegisterAndCheckIn()" class="w-full mt-4 py-3 bg-primary text-white rounded-xl font-medium text-sm hover:bg-primary-dark transition"><i class="fa-solid fa-right-to-bracket mr-1"></i>填写并签到</button></div>`;
+    }
+
+    function doStudentCheckIn() {
+      const myInfo = Store.getMyInfo();
+      if (!myInfo || !selectedOfficeId) { showToast('请选择办公室', 'warning'); return; }
+      const result = doCheckIn(selectedOfficeId, myInfo.id);
+      if (result.ok) { showToast(result.msg, 'success'); setTimeout(() => renderCheckin(), 500); }
+      else showToast(result.msg, 'error');
+    }
+
+    function doRegisterAndCheckIn() {
+      const name = document.getElementById('reg-name')?.value.trim(), no = document.getElementById('reg-no')?.value.trim();
+      const dept = document.getElementById('reg-dept')?.value.trim(), phone = document.getElementById('reg-phone')?.value.trim();
+      if (!name || !no) { showToast('请填写姓名和学号', 'warning'); return; }
+      if (!selectedOfficeId) { showToast('请先选择办公室', 'warning'); return; }
+      let students = Store.getStudents();
+      let student = students.find(s => s.studentNo === no);
+      if (!student) { student = { id: 's' + Date.now(), name, studentNo: no, department: dept || '未填写', phone: phone || '未填写' }; students.push(student); Store.setStudents(students); }
+      Store.setMyInfo(student);
+      const result = doCheckIn(selectedOfficeId, student.id);
+      if (result.ok) { showToast(result.msg, 'success'); setTimeout(() => renderCheckin(), 500); }
+      else showToast(result.msg, 'error');
+    }
+
+    function doStudentCheckOut() {
+      const myInfo = Store.getMyInfo(); if (!myInfo) return;
+      const result = doCheckOut(myInfo.id);
+      if (result.ok) { showToast(result.msg, 'success'); setTimeout(() => renderCheckin(), 500); }
+      else showToast(result.msg, 'error');
+    }
+
+    function clearMyInfo() { Store.setMyInfo(null); renderCheckin(); }
+
+    // ============ URL参数处理 ============
+    function checkURLParams() {
+      const params = new URLSearchParams(window.location.search);
+      const officeId = params.get('office'), token = params.get('token'), displayId = params.get('display');
+      if (displayId) { displayOfficeId = parseInt(displayId); currentView = 'display'; render(); return true; }
+      if (officeId && token) {
+        if (validateToken(token)) {
+          checkinOfficeId = parseInt(officeId); selectedOfficeId = checkinOfficeId; verifiedToken = token;
+          navigate('checkin', { officeId: checkinOfficeId });
+          setTimeout(() => { document.getElementById('checkin-office-section')?.classList.remove('hidden'); selectCheckinOffice(checkinOfficeId); const tokenInput = document.getElementById('token-input'); if (tokenInput) { tokenInput.value = token; tokenInput.disabled = true; } }, 100);
+        } else { showToast('二维码已过期，请扫描最新二维码', 'error'); navigate('home'); }
+        return true;
+      }
+      return false;
+    }
+
+    // ============ 自动签退过期记录 ============
+    function autoCheckoutExpired() {
+      const records = Store.getRecords(); let changed = false;
+      records.forEach(r => { if (r.checkOut) return; if (r.date !== getTodayStr()) { r.checkOut = '23:59'; r.autoCheckout = true; changed = true; } });
+      if (changed) Store.setRecords(records);
+    }
+
+    setInterval(() => { autoCheckoutExpired(); if (currentView === 'admin' && adminTab === 'dashboard') renderAdminContent(); }, 30000);
+
+    // ============ 初始化 ============
+    autoCheckoutExpired();
+    if (!checkURLParams()) navigate('home');
+  </script>
+</body>
+</html>
